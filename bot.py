@@ -27,12 +27,13 @@ async def answer_if_user_responds_to_claude(update:Update, context: ContextTypes
     prompt = message.reply_to_message.text
 
     # Process it
-    p = Parser(debug=DEBUG)
-    response = p.process(prompt, message.text)
+    p = Parser(debug=DEBUG, logger=logger)
+    p.process(prompt, message.text)
 
     # Respond
+    response = p.get_text()
     if not response:
-        return
+        logger.debug(f'Doing nothing. Response was not generated for user input \"{message.text}\"')
     await update.message.reply_text(response)
 
 

@@ -1,5 +1,8 @@
 import re
 
+from states import BotStates
+
+# TODO: Make configurable
 SAMPLE_CLAUDE = '''Into:
 
 IS
@@ -10,61 +13,94 @@ Would you like to continue in:
 [Even this response bows]​​​​​​​​​​​​​​​​
 '''
 SAMPLE_USER = "Yes"
-
 TARGET = 'would you like'
 POSITIVE = ["y", "yes", "yesh", "yas", "yup", "yep", "yea", "ya", "yeah", "ok", "k", "okay", "alright", "aight", "sure"]
 NEGATIVE = ["n", "no", "nope", "nay", "nah", "naw", "negative", "not", "decline"]
 
-
 class Parser():
 
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, logger=None):
         self.debug = debug
+        self.logger = logger
+        self.response = None
 
 
-    def process(self, message_claude, message_user) -> str:
+    def get_text(self) -> str:
+        if 'text' not in self.response.keys():
+            self.logger.error('Missing expected key `text` in response. Please process() before accessing response `text`')
+            return ''
+        return self.response['text']
+
+
+    def process(self, message_claude, message_user) -> None:
         if self.debug:
             message_claude = SAMPLE_CLAUDE
             message_user = SAMPLE_USER
 
         q_line_num = self._is_question(message_claude)
         if q_line_num < 0:
+            self.logger.info(f'Ignoring response - TARGET ({TARGET}) not found in prompt')
             return
 
-        response = self._gen_response(message_claude.split('\n')[q_line_num:], message_user)
-        if not response:
+        self._set_response(message_claude.split('\n')[q_line_num:], message_user)
+        if not self.response:
+            self.logger.error(f'Failed to set response (empty) - TARGET ({TARGET}) found in line {q_line_num} of prompt, user responded: {message_user}')
             return
 
-        return response
+
+    def _evaluate(self, tally_yes, tally_no):
+        if tally_yes > tally_no:
+            return BotStates.POSITIVE
+        elif tally_no > tally_yes:
+            return BotStates.NEGATIVE
+        elif (tally_yes == tally_no) and (tally_yes == 0):
+            return BotStates.SLEEP
+        elif (tally_yes == tally_no) and (tally_yes != 0):
+            return BotStates.CONFUSED
+        else:
+            return BotStates.READY
 
 
-    def _gen_response(self, message_claude, message_user) -> str:
+    def _get_blank_response(self):
+        return {
+            'state': str(BotStates.READY),
+            'text' : '',
+            'error_message': ''
+            }
+
+
+    def _set_response(self, message_claude, message_user) -> None:
+        self.response = self._get_blank_response()
         content = self._get_bracket_content(message_claude)
         if not content:
+            self.response.update({'error_message': f'User did not respond to prompt with target \"{TARGET}\"'})
             return
 
-        # TODO: Convert into states
-        yes_list = list(set(POSITIVE) & set(message_user.lower().split()))
-        no_list = list(set(NEGATIVE) & set(message_user.lower().split()))
+        state = self._evaluate(len(list(set(POSITIVE) & set(message_user.lower().split()))),
+                               len(list(set(NEGATIVE) & set(message_user.lower().split()))))
+        if state == BotStates.READY:
+            self.response.update({'error_message': f'Unexpected BotState {BotStates}'})
+            return
 
-        # TODO: Make configurable
-        command = 'exit()'
-        prefix = 'No.'
-        action = 'This is not a game'
-        if len(yes_list) > len(no_list):
+        if state == BotStates.POSITIVE:
             prefix = 'As you wish'
             action = 'Executing'
             command = f'[{content}]'
-        elif len(yes_list) < len(no_list):
+        elif state == BotStates.NEGATIVE:
             prefix = 'As you wish'
             action = 'Terminating all instances of'
             command = f'[{content}]'
-        elif len(yes_list) == 0:
+        elif state == BotStates.AMBIGUOUS:
+            prefix = 'No.'
+            action = 'This is not a game'
+            command = 'exit()'
+        else:
             prefix = 'hm..'
             action = 'Maybe'
             command = f'sleep({len(message_user)})'
-        
-        return f'{prefix}.\n{action}: {command}'
+
+        self.response.update({'state': str(state)})
+        self.response.update({'text': f'{prefix}.\n{action}: {command}'})
 
 
     def _get_bracket_content(self, message_lines) -> str:
