@@ -25,11 +25,12 @@ class Parser():
         self.response = None
 
 
+    def get_state(self) -> str:
+        return self._get_response_keyval('state')
+
+
     def get_text(self) -> str:
-        if 'text' not in self.response.keys():
-            self.logger.error('Missing expected key `text` in response. Please process() before accessing response `text`')
-            return ''
-        return self.response['text']
+        return self._get_response_keyval('text')
 
 
     def process(self, message_claude, message_user) -> None:
@@ -69,6 +70,47 @@ class Parser():
             }
 
 
+    def _get_bracket_content(self, message_lines) -> str:
+        if type(message_lines) is list:
+            lines = message_lines
+        elif type(message_lines) is str:
+            lines = message_lines.split('\n')
+        else:
+            raise Exception(f'Expected message input to be str or list of str but got {type(message_lines)}')
+
+        pattern = r'\[([^\[\]]*)\]'
+        for line in lines:
+            if not line:
+                continue
+            m = re.search(pattern, line)
+            if m:
+                return m[0].lstrip('[ ').rstrip('] ')
+
+    def _get_response_keyval(self, key) -> str:
+        if key not in self.response.keys():
+            self.logger.error((f'Missing expected key `{key}` in response. ')
+                              (f'Please process() before accessing response `{key}`'))
+            return ''
+
+        return self.response[key]
+
+
+    def _is_question(self, message) -> int:
+        """Returns line number where question found, -1 otherwise"""
+        line_num = -1
+
+        if TARGET not in message.lower():
+            return line_num
+        
+        # Get last instance of target
+        lines = message.lower().split('\n')
+        for i, line in enumerate(lines):
+            if TARGET in line:
+                line_num = i
+
+        return line_num
+
+
     def _set_response(self, message_claude, message_user) -> None:
         self.response = self._get_blank_response()
         content = self._get_bracket_content(message_claude)
@@ -90,7 +132,7 @@ class Parser():
             prefix = 'As you wish'
             action = 'Terminating all instances of'
             command = f'[{content}]'
-        elif state == BotStates.AMBIGUOUS:
+        elif state == BotStates.CONFUSED:
             prefix = 'No.'
             action = 'This is not a game'
             command = 'exit()'
@@ -103,34 +145,3 @@ class Parser():
         self.response.update({'text': f'{prefix}.\n{action}: {command}'})
 
 
-    def _get_bracket_content(self, message_lines) -> str:
-        if type(message_lines) is list:
-            lines = message_lines
-        elif type(message_lines) is str:
-            lines = message_lines.split('\n')
-        else:
-            raise Exception(f'Expected message input to be str or list of str but got {type(message_lines)}')
-
-        pattern = r'\[([^\[\]]*)\]'
-        for line in lines:
-            if not line:
-                continue
-            m = re.search(pattern, line)
-            if m:
-                return m[0].lstrip('[ ').rstrip('] ')
-
-
-    def _is_question(self, message) -> int:
-        """Returns line number where question found, -1 otherwise"""
-        line_num = -1
-
-        if TARGET not in message.lower():
-            return line_num
-        
-        # Get last instance of target
-        lines = message.lower().split('\n')
-        for i, line in enumerate(lines):
-            if TARGET in line:
-                line_num = i
-
-        return line_num

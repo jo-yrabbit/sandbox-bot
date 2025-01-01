@@ -6,6 +6,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from config import Config
 from parser import Parser
+from redis_handler import RedisHandler
 
 # Configure logging
 logging.basicConfig(
@@ -15,6 +16,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DEBUG = False
+
+
+redis_handler = RedisHandler(logger=logger)
+
+async def fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show last messages when the command /fetch is issued."""
+    state = 'test_state'
+    messages = redis_handler.get_messages(state)
+
+    if not messages:
+        await update.message.reply_text(f'Nothing stored for state: {state}')
+        return
+    
+    lines = [f'Message #{i}:\n{m}' for i,m in enumerate(messages)]
+    await update.message.reply_text('\n\n'.join(lines))
+
 
 async def answer_if_user_responds_to_claude(update:Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Detect if is reply to text chat"""
@@ -34,7 +51,17 @@ async def answer_if_user_responds_to_claude(update:Update, context: ContextTypes
     response = p.get_text()
     if not response:
         logger.debug(f'Doing nothing. Response was not generated for user input \"{message.text}\"')
+
+    # Finally, respond to user:
     await update.message.reply_text(response)
+
+    # Store response
+    try:
+        state = 'test_state'  # TODO: get from parser
+        if not redis_handler.store_message(state, response):
+            await update.message.reply_text(f'Stored response:\n\n({state}) - \"{response}\"')
+    except Exception as e:
+        logger.error('Failed to store message - {}', e.args)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -45,17 +72,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     c = Config()
+    redis_handler.start(c.redis_host, c.redis_port, c.redis_password)
 
     # Create the Application and pass it your bot's token
     application = Application.builder().token(c.bot_token).build()
 
-    # on different commands - answer in Telegram
+    # Handle commands (/command) - answer in Telegram
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('fetch', fetch))
 
-    # on non command i.e message - answer in Telegram with parsed response
+    # Handle non commands (e.g. messages from user) - answer in Telegram with parsed response
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, answer_if_user_responds_to_claude))
 
-    # Run the bot until the user presses Ctrl-C
+    # Run the bot until process is terminated (e.g. user presses Ctrl-C)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
