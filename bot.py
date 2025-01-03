@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from config import Config
 from parser import Parser
-from redis_handler import RedisHandler
+from api_client import MessageAPIClient
 
 # Configure logging
 logging.basicConfig(
@@ -16,20 +16,28 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 DEBUG = False
+c = Config()
+api = MessageAPIClient(c.bot_id, c.api_url)
 
-
-redis_handler = RedisHandler(logger=logger)
 
 async def fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show last messages when the command /fetch is issued."""
-    state = 'test_state'
-    messages = redis_handler.get_messages(state)
+    state = 'test_state'  # TODO: get from parser
+    messages = api.get_messages(state)
 
     if not messages:
         await update.message.reply_text(f'Nothing stored for state: {state}')
         return
-    
-    lines = [f'Message #{i}:\n{m}' for i,m in enumerate(messages)]
+
+    print_me = []
+    for i,m in enumerate(messages):
+        if (type(m) is dict) and ('text' in m.keys()):
+            print_me.append(m['text'])
+        else:
+            logger.error(f'Message#{i} has invalid format: {str(m)}')
+            print_me.append('')
+
+    lines = [f'Message #{i}:\n{m}' for i,m in enumerate(print_me)]
     await update.message.reply_text('\n\n'.join(lines))
 
 
@@ -58,10 +66,10 @@ async def answer_if_user_responds_to_claude(update:Update, context: ContextTypes
     # Store response
     try:
         state = 'test_state'  # TODO: get from parser
-        if not redis_handler.store_message(state, response):
+        if not api.store_message(state, response):
             await update.message.reply_text(f'Stored response:\n\n({state}) - \"{response}\"')
     except Exception as e:
-        logger.error('Failed to store message - {}', e.args)
+        logger.error('Failed to store message - {}', e.args[0])
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -71,9 +79,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
-    c = Config()
-    redis_handler.start(c.redis_host, c.redis_port, c.redis_password)
-
     # Create the Application and pass it your bot's token
     application = Application.builder().token(c.bot_token).build()
 

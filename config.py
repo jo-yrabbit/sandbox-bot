@@ -1,7 +1,6 @@
 import os
 
-REQUIRED = ['bot_token',
-            'redis_host', 'redis_port', 'redis_password']
+REQUIRED = ['bot_token', 'bot_id', 'api_url']
 
 # TODO: Replace with python-dotenv
 
@@ -24,10 +23,9 @@ class Config():
             if len(missing_keys):
                 raise Exception('Missing required env variables: {}. Please add line `export ENV_VAR="value"` to .env file or source it before running'.format(', '.join(missing_keys)))
 
+        self.api_url = c['api_url']
         self.bot_token = c['bot_token']
-        self.redis_host = c['redis_host']
-        self.redis_port = c['redis_port']
-        self.redis_password = c['redis_password']
+        self.bot_id = c['bot_id']
 
 
     def read_config(self, dot_env):

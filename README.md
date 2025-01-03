@@ -1,6 +1,14 @@
 ## Telegram bot
 A telegram bot that responds to messages
 
+### How to run
+1. Create a `.env` file:
+* BOT_TOKEN (Telegram bot token from @botfather)
+* BOT_ID (For now, make one up)
+* API_URL (For now, http://localhost:5000. Once api-server is deployed to AWS, replace)
+2. Make sure [`api-server`](https://github.com/jo-yrabbit/sandbox-api-server)
+3. Run `python ./bot.py` to poll for activity on TG chat until `Ctrl+C`
+
 ### What it does
 * Responds to `/start` command with welcome message
 * If user replies to a question `Would you like... [content])`, with something like a Y/N, it will (try) to respond
@@ -8,22 +16,13 @@ A telegram bot that responds to messages
 ### What I did
 * Messaged @botfather in TG to create bot and get a bot token
 * Started chatting with new bot on TG
-* Stored BOT_TOKEN in <pardir>/.env (do not commit!)
-* Created main `bot.py` and `config.py`, `parser.py`
-* Run `python ./bot.py` to poll for activity on TG chat until `Ctrl+C`
+* Designed to make REST api calls to a separate [`api-server`](https://github.com/jo-yrabbit/sandbox-api-server) to store messages and `/fetch` them
 
 ### Next
-* Fun, but don't spend more time on bot. Focus on infrastructure:
-  * Deploy to EC2, use Docker
-  * Automate deployment to AWS
-  * Integrate with AWS backend (redis) to store messages
-* On Redis side, store messages like this:
-```json
-[
-  { id: 1, content: "Message 1", timestamp: "2024-12-29T12:00:00Z" },
-  { id: 2, content: "Message 2", timestamp: "2024-12-29T12:01:00Z" }
-]
-```
+Fun, but don't spend more time on bot. Focus on infrastructure:
+* Deploy to EC2, use Docker
+* Integrate with AWS backend (ElastiCache) to store messages
+* Automate deployment to AWS (Github Action)
 
 ### Reference
 * https://core.telegram.org/bots/tutorial#echo-bot
